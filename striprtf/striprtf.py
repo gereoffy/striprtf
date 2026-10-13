@@ -185,9 +185,39 @@ def remove_pict_groups(rtf_text):
     result.append(rtf_text[i:])
     return "".join(result)
 
-FONTTABLE = re.compile(r"\\f(\d+).*?\\fcharset(\d+).*?([^;]+);")
+FONTTABLE_FONT = re.compile(r"\\f(\d+)")
+FONTTABLE_CHARSET = re.compile(r"\\fcharset(\d+)")
 FONTTABLE_START = re.compile(r"{[^{}]*\\fonttbl")
 BRACE = re.compile(r"[{}]")
+
+
+def font_table_entries(group):
+    """
+    Return ``(font_id, charset, name)`` for each entry of a ``{\\fonttbl ...}`` group.
+
+    The font table is a ``;``-terminated list, so it is split on ``;`` and each entry
+    is parsed on its own: the first ``\\fN``, the first ``\\fcharsetN`` after it, and
+    the rest of the entry as the name. Each step is a single search, so this is linear
+    in the length of the group, which can be the whole document when the braces are
+    unbalanced (a regex with lazy quantifiers over the group, or over an entry with
+    many ``\\fN`` and no ``\\fcharset``, is quadratic). See issue 77.
+    """
+    entries = []
+    for entry in group.split(";")[:-1]:
+        font = FONTTABLE_FONT.search(entry)
+        if not font:
+            continue
+        charset = FONTTABLE_CHARSET.search(entry, font.end())
+        if not charset:
+            continue
+        digits, name = charset.group(1), entry[charset.end() :]
+        if not name:
+            # the name must not be empty: take the last digit (as a regex ending in (.+))
+            if len(digits) < 2:
+                continue
+            digits, name = digits[:-1], digits[-1]
+        entries.append((font.group(1), digits, name))
+    return entries
 
 
 def font_table_group(text):
@@ -248,8 +278,8 @@ def rtf_to_text(text, encoding="cp1252", errors="strict"):
     in_document = False  # Whether the outer document group has been entered
     star = False  # Whether the previous token was \*
 
-    # Simplified font table regex
-    fonttbl_matches = FONTTABLE.findall(font_table_group(text))
+    # One entry of the ';'-terminated font table at a time (see font_table_entries)
+    fonttbl_matches = font_table_entries(font_table_group(text))
     for font_id, fcharset, font_name in fonttbl_matches:
         fonttbl[font_id] = {
             "name": font_name.strip(),
