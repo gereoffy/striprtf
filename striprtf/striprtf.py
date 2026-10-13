@@ -358,7 +358,9 @@ def rtf_to_text(text, encoding="cp1252", errors="strict"):
                     c = int(arg)
                     if c < 0:
                         c += 0x10000
-                    out.append(chr(c))
+                    # a signed 16-bit number in the spec: a value out of the Unicode range
+                    # (e.g. \u9999999999) must not raise an exception
+                    out.append(chr(c) if 0 <= c <= 0x10FFFF else "\ufffd")
                     curskip = ucskip
             elif word == "f":
                 current_font = arg
