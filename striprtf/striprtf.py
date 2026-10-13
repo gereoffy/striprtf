@@ -284,7 +284,9 @@ def rtf_to_text(text, encoding="cp1252", errors="strict"):
         fonttbl[font_id] = {
             "name": font_name.strip(),
             "charset": fcharset,
-            "encoding": charset_map.get(int(fcharset), encoding),
+            # None if the charset is not in charset_map (e.g. 1 = default, 2 = symbol):
+            # then the document codepage is used, known only after \ansicpg (see below)
+            "encoding": charset_map.get(int(fcharset)),
         }
     for match in PATTERN.finditer(text):
         word, arg, _hex, char, brace, tchar = match.groups()
@@ -292,9 +294,7 @@ def rtf_to_text(text, encoding="cp1252", errors="strict"):
         if hexes and not _hex:
             # Decode accumulated hexes
             out.append(bytes.fromhex("".join(hexes)).decode(
-                encoding=fonttbl.get(current_font, {"encoding": encoding}).get(
-                    "encoding", encoding
-                ),
+                encoding=fonttbl.get(current_font, {}).get("encoding") or encoding,
                 errors=errors,
             ))
             hexes = None
