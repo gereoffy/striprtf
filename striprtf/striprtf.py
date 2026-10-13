@@ -272,8 +272,8 @@ def rtf_to_text(text, encoding="cp1252", errors="strict"):
     suppress_output = False  # Whether this group (and all inside it) are "ignorable".
     ucskip = 1  # Number of ASCII characters to skip after a unicode character.
     curskip = 0  # Number of ASCII characters left to skip
-    hexes = None
-    out = ""
+    hexes = None  # list of the accumulated \'xx hex digit pairs
+    out = []  # output pieces, joined at the end (+= on str is quadratic on PyPy)
     depth = 0  # Current group nesting level
     in_document = False  # Whether the outer document group has been entered
     star = False  # Whether the previous token was \*
@@ -291,12 +291,12 @@ def rtf_to_text(text, encoding="cp1252", errors="strict"):
         after_star, star = star, False
         if hexes and not _hex:
             # Decode accumulated hexes
-            out += bytes.fromhex(hexes).decode(
+            out.append(bytes.fromhex("".join(hexes)).decode(
                 encoding=fonttbl.get(current_font, {"encoding": encoding}).get(
                     "encoding", encoding
                 ),
                 errors=errors,
-            )
+            ))
             hexes = None
         if brace:
             curskip = 0
@@ -326,7 +326,7 @@ def rtf_to_text(text, encoding="cp1252", errors="strict"):
                 if char in sectionchars:
                     current_font = default_font
                 if not ignorable:
-                    out += specialchars[char]
+                    out.append(specialchars[char])
             elif char == "*":
                 ignorable = True
                 star = True
@@ -347,7 +347,7 @@ def rtf_to_text(text, encoding="cp1252", errors="strict"):
             if ignorable or suppress_output:
                 pass
             elif word in specialchars:
-                out += specialchars[word]
+                out.append(specialchars[word])
             elif word == "uc":
                 ucskip = int(arg)
             elif word == "u":
@@ -358,7 +358,7 @@ def rtf_to_text(text, encoding="cp1252", errors="strict"):
                     c = int(arg)
                     if c < 0:
                         c += 0x10000
-                    out += chr(c)
+                    out.append(chr(c))
                     curskip = ucskip
             elif word == "f":
                 current_font = arg
@@ -375,13 +375,13 @@ def rtf_to_text(text, encoding="cp1252", errors="strict"):
             elif not ignorable:
                 # Accumulate hex characters to decode later
                 if not hexes:
-                    hexes = _hex
+                    hexes = [_hex]
                 else:
-                    hexes += _hex
+                    hexes.append(_hex)
         elif tchar:
             if curskip > 0:
                 curskip -= 1
             elif not ignorable and not suppress_output:
-                out += tchar
+                out.append(tchar)
 
-    return out
+    return "".join(out)
